@@ -1,0 +1,100 @@
+---
+title: "MachineLearning"
+author: "Megan Zimmerman"
+date: "3/28/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Machine Learning Project
+
+Project goal is to predict the manner in which participants performed the exercise (i.e. how well they performed barbell lifts). The training data set has 160 variables and 19622 measurements. The classe variable defines how well the exercise is executed, with exactly according to specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E) being the potential outcomes.
+
+# Load the Data
+```{r loaddata, message=FALSE}
+setwd("C://Users//mtorp//Documents//Coursera_DataScienceCert//8_MachineLearning")
+set.seed(1)
+
+library(AppliedPredictiveModeling)
+library(rattle)
+library(ggplot2)
+library(caret)
+
+# LOAD TRAINING DATA
+train_data<-read.csv("pml-training.csv",header=TRUE,stringsAsFactors = FALSE)
+
+# Only keep data that we will use for prediction
+Yaw   <-grep("^yaw",   names(train_data))
+Accel <-grep("^accel", names(train_data))
+Gyros <-grep("^gyros", names(train_data))
+Magnet<-grep("^magnet",names(train_data))
+Pitch <-grep("^pitch", names(train_data))
+ClassE<-grep("classe", names(train_data))
+train_clean<-train_data[,c(Yaw,Accel,Gyros,Magnet,Pitch,ClassE)]
+
+ggplot(train_clean) + geom_histogram(aes(x=classe),stat="count",fill="orange") + ggtitle("Training Data Classe Variable")
+
+```
+
+# Partition the Data
+To cross-validate our models we need to partition the data into a training and testing set. We use 75% of the data for training and use 25% for testing.
+```{r partition,message=FALSE}
+training_IDs<-createDataPartition(y=train_clean$classe,p=0.75,list=FALSE)
+TrainingSet <-train_clean[training_IDs,]
+TestingSet  <-train_clean[-training_IDs,]
+```
+
+# Fit Model using the Training Data
+Train the data using the random forest method and the classification tree method
+```{r traindata,message=FALSE}
+#modFit1<-train(classe ~ ., method="rf",   data=TrainingSet)  # Random forest
+#save(modFit1,file="modFit1_rf.Rdata")
+#modFit2<-train(classe ~ ., method="rpart",data=TrainingSet)  # Classification tree
+#save(modFit2,file="modFit2_rpart.Rdata")
+load(file="modFit1_rf.Rdata")
+load(file="modFit2_rpart.Rdata")
+
+#fancyRpartPlot(modFit2$finalModel)
+```
+
+For further exploratory analysis, we look at the variables that are the most important for the two training methods used to see which model incorporates which variables. Based on these charts, we see that the random forest model utilizes more variables than the classification tree model which may suggest a more accurate prediction, however we need to investigate the cross validation data to be sure.
+```{r exploredata,message=FALSE}
+ggplot(varImp(modFit1),aes(y=importance))+geom_bar(stat="identity")
+ggplot(varImp(modFit2),aes(y=importance))+geom_bar(stat="identity")
+
+```
+
+# Cross-Validation 
+ Prediction will be of 'classe' variable
+Use the testing data partitioned from the original data to predict the classe variables to investigate the confusion matrix which calculates a cross-tabulation of observed and predicted classes with associated statistics
+
+```{r predictmodel}
+mod1predict<-predict(modFit1,newdata=TestingSet)
+mod2predict<-predict(modFit2,newdata=TestingSet)
+
+Mod1_ConfMat<-confusionMatrix(data=mod1predict,factor(TestingSet$classe))
+Mod1_ConfMat$table
+Mod1_ConfMat$overall[1]
+
+Mod2_ConfMat<-confusionMatrix(data=mod2predict,factor(TestingSet$classe))
+Mod2_ConfMat$table
+Mod1_ConfMat$overall[1]
+```
+
+  
+Based on these results, the first model (using the random forest method) better predicts the data than the second model. This is apparent in the Confusion Matrix which shows that the classes are more often predicted accurately using model 1 than model 2 as given by the larger diagonals along the matrix. Additionally, the accuracy rate of the random forest model is 99.7% while the second model is only 63.6%. Finally, the out-of-sample error, the error rate you get on a new data set, is lower for the random forest model since the accuracy of this model is greater.
+
+# Prediction Test Cases for Submission (20 observations)
+To complete the project, use the 20 observations provided in pml-testing.csv and predict the classe variables using the better fitting model.
+```{r projectobservations}
+test_data<-read.csv("pml-testing.csv",header=TRUE,stringsAsFactors = FALSE)
+test_clean<-test_data[,c(Yaw,Accel,Gyros,Magnet,Pitch)]
+predictions<-as.data.frame(predict(modFit1,test_clean))
+names(predictions)<-"classe"
+ggplot(predictions)+geom_histogram(aes(x=classe),stat="count",fill="lightgreen") + ggtitle("Predictions")
+final_df<-cbind(test_data,predictions)
+
+```
